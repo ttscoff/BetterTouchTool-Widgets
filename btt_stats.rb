@@ -7,6 +7,8 @@
 require 'optparse'
 require 'yaml'
 require 'fileutils'
+require 'json'
+require 'shellwords'
 config = '~/.config/bttstats.yml'
 
 # Settings
@@ -90,6 +92,9 @@ parser = OptionParser.new do |opts|
   opts.separator '    network [interface|location*]'
   opts.separator '    doing'
   opts.separator '    refresh [key:path ...]'
+  opts.separator ''
+  opts.separator "To add buttons automatically, use: #{File.basename(__FILE__)} add [touch|menu] [type]"
+  opts.separator '    where type is one of cpu, memory, lan, wan, interface, location, or doing'
   opts.separator ''
   opts.separator 'Options:'
 
@@ -178,6 +183,155 @@ def color_to_btt(color)
   end
 end
 
+def match_key(table, key)
+  result = nil
+  expanded_key = key
+  table.each do |k, v|
+    if k =~ /^#{key.downcase}/
+      expanded_key = k
+      result = v
+      break
+    end
+  end
+  [expanded_key, result]
+end
+
+def available_commands(table, key = nil)
+  type = key.nil? ? '' : "#{key} "
+  puts "Available #{type}commands:"
+  table.each do |k, v|
+    if v.key?(:title)
+      puts %(#{type}#{k} - #{v[:title]})
+    else
+      v.each do |subk, subv|
+        puts "#{type}#{k} #{subk} - #{subv[:title]}"
+      end
+    end
+  end
+end
+
+def data_for_command(cmd)
+
+  table = {
+    'cpu' => {
+      'bar' => { title: 'CPU Bar', command: 'cpu -c 1 --top -i', fontsize: 10, monospace: 1 },
+      'double' => { title: 'CPU Split Bar', command: 'cpu -c 1 --top -i --split_cpu', fontsize: 8, monospace: 1, baseline: -4 },
+      'percent' => { title: 'CPU Percent, 1m avg', command: 'cpu -c 1 --top -i -p -a 1', fontsize: 15 }
+    },
+    'memory' => {
+      'bar': { title: 'Memory', command: 'mem -i', fontsize: 10, monospace: 1 },
+      'percent': { title: 'Memory', command: 'mem -ip', fontsize: 10, monospace: 1 }
+    },
+    'ip' => {
+      'lan' => { title: 'LAN IP', command: 'ip lan' },
+      'wan' => { title: 'WAN IP', command: 'ip wan' }
+    },
+    'network' => {
+      'location' => { title: 'Network Location', command: 'network location' },
+      'interface' => { title: 'Network Interface', command: 'network interface' }
+    },
+    'doing' => {
+      title: 'Doing',
+      command: 'doing --truncate 45 --prefix " " -i --empty "…"',
+      sfsymbol: 'checkmark.circle'
+    }
+  }
+  if cmd.nil? || cmd.empty?
+    available_commands(table)
+    Process.exit 0
+  end
+  key = ''
+  data = table.dup
+  cmd = cmd.split(' ') if cmd.is_a? String
+  cmd.each do |c|
+    key_name, data = match_key(data, c)
+    key += key_name
+  end
+
+  unless data.key?(:title)
+    available_commands(data, key)
+    Process.exit 1
+  end
+
+  warn "Button type not found: #{cmd.join(' ')}" if data.nil?
+
+  data
+end
+
+# Hash methods
+class Hash
+  def to_btt_url(method)
+    query = CGI.escape(to_json).gsub(/\+/, '%20')
+    %(btt://#{method}/?json=#{query})
+  end
+
+  def to_btt_as(method)
+    query = to_json.gsub(/\\"/, '\\\\\\\\"').gsub(/"/, '\\\\"')
+    %(tell application "BetterTouchTool" to #{method} "#{query}")
+  end
+end
+
+def osascript(script)
+  `/usr/bin/osascript -e #{Shellwords.escape(script)}`
+end
+
+def add_menu_bar_button(specs)
+  specs[:fontsize] ||= 15
+  specs[:monospace] ||= 0
+  specs[:sfsymbol] ||= ''
+  specs[:baseline] ||= 0
+  data = {
+    'BTTGestureNotes' => specs[:title],
+    'BTTTriggerType' => 681,
+    'BTTTriggerTypeDescription' => "Menubar Item: #{specs[:title]}",
+    'BTTTriggerClass' => 'BTTTriggerTypeOtherTriggers',
+    'BTTAdditionalConfiguration' => '\/bin\/bash:::-c:::-:::',
+    'BTTEnabled2' => 1,
+    'BTTEnabled' => 1,
+    'BTTTriggerConfig' => {
+      'BTTTouchBarItemSFSymbolWeight' => 1,
+      'BTTTouchBarItemIconType' => 2,
+      'BTTTouchBarItemSFSymbolDefaultIcon' => "#{specs[:sfsymbol]}",
+      'BTTTouchBarScriptUpdateInterval' => 5,
+      'BTTTouchBarButtonFontSize' => specs[:fontsize].to_i,
+      'BTTTouchBarButtonMonoSpace' => specs[:monospace].to_i,
+      'BTTTouchBarAppleScriptStringRunOnInit' => true,
+      'BTTTouchBarShellScriptString' => "#{__FILE__} #{specs[:command]}",
+      'BTTTouchBarButtonBaselineOffset' => specs[:baseline].to_i
+    }
+  }
+  script = data.to_btt_as('add_new_trigger')
+  osascript(script)
+end
+
+def add_touch_bar_button(specs)
+  specs[:fontsize] ||= 15
+  specs[:sfsymbol] ||= ''
+  data = {
+    'BTTWidgetName' => specs[:title],
+    'BTTTriggerType' => 642,
+    'BTTTriggerTypeDescription' => 'Shell Script \/ Task Widget',
+    'BTTTriggerClass' => 'BTTTriggerTypeTouchBar',
+    'BTTShellScriptWidgetGestureConfig' => '\/bin\/sh:::-c:::-:::',
+    'BTTEnabled2' => 1,
+    'BTTEnabled' => 1,
+    'BTTMergeIntoTouchBarGroups' => 0,
+    'BTTTriggerConfig' => {
+      'BTTTouchBarItemSFSymbolWeight' => 1,
+      'BTTTouchBarItemIconType' => 2,
+      'BTTTouchBarItemSFSymbolDefaultIcon' => specs[:sfsymbol],
+      'BTTTouchBarButtonFontSize' => specs[:fontsize].to_i,
+      'BTTTouchBarScriptUpdateInterval' => 5,
+      'BTTTouchBarShellScriptString' => "#{__FILE__} #{specs[:command]}",
+      'BTTTouchBarAppleScriptStringRunOnInit' => true,
+      'BTTTouchBarButtonName' => specs[:title],
+      'BTTTouchBarOnlyShowIcon' => false,
+    }
+  }
+  script = data.to_btt_as('add_new_trigger')
+  osascript(script)
+end
+
 def btt_action(action)
   `/usr/bin/osascript -e 'tell app "BetterTouchTool" to #{action}'`
 end
@@ -199,7 +353,32 @@ def refresh_widget(key, v)
   end
 end
 
+color = ''
+font_color = ''
+chart = ''
+
 case ARGV[0]
+when /^add/
+  ARGV.shift
+  unless ARGV[0] =~ /^(touch|menu)/
+    warn "First argument must be 'touch' or 'menu'"
+    warn "Example: #{File.basename(__FILE__)} add touch ip lan"
+    data_for_command(nil)
+    Process.exit 1
+  end
+  type = ARGV[0] =~ /^touch/ ? 'touchbar' : 'menubar'
+  ARGV.shift
+  data = data_for_command(ARGV)
+  Process.exit 1 if data.nil?
+
+  if type == 'touchbar'
+    add_touch_bar_button(data)
+  else
+    add_menu_bar_button(data)
+  end
+  puts "#{type == 'touchbar' ? 'Touch Bar' : 'Menu Bar'} widget added."
+  puts 'You may need to restart BetterTouchTool to see the button in your configuration.'
+  Process.exit 0
 when /^refresh/
   unless settings.key?(:refresh)
     warn 'No :refresh key in config'
@@ -288,7 +467,8 @@ when /^mem/
   color = ''
   settings[:colors][:severity].each do |c|
     if mem_used <= c[:max]
-      color = color_to_btt(c[:color])
+      font_color = color_to_btt(c[:fg])
+      color = color_to_btt(c[:bg])
       break
     end
   end
@@ -360,8 +540,6 @@ else
     end
 
   end
-
-  color = ''
 
   if options[:background]
     settings[:colors][:severity].each do |c|
