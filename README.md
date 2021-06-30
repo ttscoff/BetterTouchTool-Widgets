@@ -1,0 +1,165 @@
+# BetterTouchTool Widgets
+
+A collection of tools for creating Touch Bar and Menu Bar widgets using BetterTouchTool.
+
+### Installation
+
+You can put the `btt_stats.rb` script anywhere you like. It doesn't necessarily even need to be in your `$PATH`, as you'll need to hardcode it's absolute path in BetterTouchTool anyway. All the same, I personally keep mine in `~/scripts`, which happens to be in my PATH, thus it's easy to run from the command line.
+
+### Configuration
+
+To create a configuration file, run `btt_stats.rb -h`. This will show the help screen, and also create an initial configuration file at `~/.config/bttstats.yml`. Open that file in any text editor and edit the options as you see fit. They're described in comments below for reference.
+
+```
+---
+:bar_width: 8 # Default width of bar graphs for CPU and memory usage display
+:colors:
+  :activity:
+    :active:
+      :fg: "#000000" # Foreground color for "active". Only applies to `doing`, active means a task is currently running
+      :bg: rgba(165, 218, 120, 1.00) # Background color. You can use hex or RGBA.
+    :inactive:
+      :fg: "#ffffff" # Colors for when no task was returned by the `doing` subcommand
+      :bg: rgba(67, 76, 95, 1.00)
+  :severity:
+  # Severity levels define the foreground and background colors for 
+  # a percentage at or below a certain threshold.
+  # They must be in numerical order from lowest to highest, but you 
+  # can use any breakpoints you want.
+  - :max: 60
+    :fg: "#000000"
+    :bg: rgba(162, 191, 138, 1.00)
+  - :max: 75
+    :fg: "#000000"
+    :bg: rgba(181, 141, 174, 1.00)
+  - :max: 90
+    :fg: "#000000"
+    :bg: rgba(210, 135, 109, 1.00)
+  - :max: 1000
+    :fg: "#000000"
+    :bg: rgba(197, 85, 98, 1.00)
+:refresh:
+# Refresh settings are shortcuts to refreshing widgets using 
+# `btt_stats.rb refresh KEY`. You can define any key name you want,
+# and keys can be nested and called like `btt_stats.rb refresh bunch:comms`
+# The content of the key is the widget's UUID, which you can get by right
+# clicking a widget and selecting "Copy UUID"
+  doing: 6431A469-F09E-412C-9946-5FEB31CB8368
+  cpu1: C8F8D01F-0AB3-4261-AE77-91994F211421
+  cpu2: D2B01D67-CB14-4A68-B333-EF7D308E26B8
+  bunch:
+    comms: 3392D549-15D8-47BA-AC8D-DC9A4741B8FC
+# ... etc.
+# Keys can also be arrays, so calling the below with 
+# `btt_stats.rb refresh doing` would refresh both widgets listed.
+  doing:
+  - 6431A469-F09E-412C-9946-5FEB31CB8368
+  - 1A085A05-95E0-4D3C-A9D8-B87115EE819E
+# If you want to use `btt_stats.rb` to just return plain text without
+# the JSON formatting it uses for BetterTouchTool widgets, set :raw to true
+:raw: false
+```
+
+### Add Widgets
+
+You can use `btt_stats.rb` to automatically add selected widgets to either your Touch Bar or your menu bar. (Or, hey, maybe both. Weirdo.) To see a list of available widgets, just run `btt_stats.rb add` with no arguments.
+
+```
+$ btt_stats.rb add
+First argument must be 'touch' or 'menu'
+Example: btt_stats.rb add touch ip lan
+Available commands:
+cpu bar - CPU Bar
+cpu double - CPU Split Bar
+cpu percent - CPU Percent, 1m avg
+memory bar - Memory
+memory percent - Memory
+ip lan - LAN IP
+ip wan - WAN IP
+network location - Network Location
+network interface - Network Interface
+doing - Doing
+```
+
+As noted in the output above, the first argument after `add` must be either `touch` or `menu`, which tells the script whether to add the widget to the Touch Bar or the menu bar. A complete command that adds a CPU meter to your Touch Bar would look like:
+
+```
+btt_stats.rb add touch cpu bar
+```
+
+When you add a widget via external script, BetterTouchTool does not show the new widget in the config right away. You need to switch to a different page of the configuration window and then back to see the new widget(s). And if they don't immediately show up in your Touch/menu bar, you may need to then hide and show them to get them to stick. Still saves you some time.
+
+The location of the `btt_stats.rb` script is hardcoded into the new widgets based on where the script is when you run it. Make sure the script is saved to a permanent location before creating widgets with it.
+
+
+### Available Commands
+
+Use `btt_stats.rb SUBCOMMAND` to output various widgets. All commands respond to the following switches:
+
+- `--prefix PREFIX` outputs the specified text before the content
+- `--suffix SUFFIX` outputs the specified text after the content
+- `--width WIDTH` applies to any command that outputs a graph. This overrides the `:bar_width` setting in the config for just the current command
+- `--raw` outputs only the text without the JSON that's used by BetterTouchTool to add things like background colors to the widget
+
+Available subcommands are:
+
+- `btt_stats.rb cpu` outputs a graph of current CPU load. It has a few options available:
+    - `cpu --averages` can limit it to certain averages (1, 5, or 15m). To show just the 5 and 15m averages, you would use `cpu --averages 5,15`. In regular graph mode averages are overlapping, with the lowest average (default 1 minute) in a dark bar on top.
+    - You can output a percentage instead of a graph with `cpu --percent`.
+    - `-i` determines whether a background color is included indicating severity.
+    - `--color_from` tells the widget where to pull its severity indicator color from. By default this is 1, but if you wanted to only show background colors for the 15 minute average, you would use `cpu --color_from 15`.
+    - `--split_cpu` will output a two-line chart, with the lowest average on top, and the additional 1 or 2 averages overlapping on the bottom.    
+- `btt_stats.rb memory` outputs the current amount of used memory. 
+    - Like `cpu`, you can use `--percent` to output it as just `56%` instead of a graph. 
+    - Use `--free` to show the graph or percentage as free memory instead of used memory
+    - If `--top` is included and the used memory is at 100%, the name of the app or process using the most memory will be displayed after the graph.
+- `btt_stats.rb ip` outputs the current local IP address
+    - use `ip wan` to output the public (WAN) IP address
+- `btt_stats.rb network` outputs the current Network Location
+    - use `network interface` to output the active network interface (Ethernet, Wi-fi, etc.), that currently has priority.
+- `btt_stats.rb doing` will output any active `doing` task (only the most recent). This requires having a `btt` view in `.doingrc` (see below)
+- `refresh [key:path ...]` is a shortcut to trigger a refresh of a configured widget
+
+### Doing setup
+
+You can include an active [doing](http://brettterpstra.com/projects/doing) task by configuring a `btt` view in your `.doingrc`. To access the config file, just run `doing config` and it will open in your default editor.
+
+Under `views`, add the following:
+
+```yaml
+views:
+  btt:
+    section: Currently
+    count: 1
+    order: desc
+    template: "%title"
+    tags_bool: NONE
+    tags: done
+```
+You can test the output by running `doing view btt` on the command line. Add the widget with `btt_stats.rb add touch doing` (or `add menu doing`). Configure the background colors used in the `~/.config/bttstats.yml` configuration file.
+
+### Bunch Setup
+
+There's a separate script in this repo called `create_bunch_buttons.rb`. It will get a list of all your Bunches and create a widget for each one. Clicking the widget will toggle that Bunch, and its background will be determined by the open/closed state of its bunch. Setting up the necessary scripts is [detailed here](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).
+
+### Refresh Widget Shortcuts
+
+In a lot of cases it's more efficient to "push" updates to the widgets rather than having them poll repeatedly. Bunch buttons and the `doing` widgets are prime examples. They only need to change when there's a change to the Bunch state or the doing file.
+
+In both cases, it's worthwhile to set up a "hook" to refresh the widgets on change.
+
+#### Doing
+
+The latest version of the doing gem has a configuration option that will run a script any time the doing file is updated. To make use of this, you need to do the following:
+
+1. Add a `doing` key to the refresh section of the `~/.config/bttstats.yml` file with the UUID of the doing widget (right click the widget and select "Copy UUID")
+2. Create a shell script that just runs `btt_stats.rb refresh doing`. You'll probably want to hardcode the path to `btt_stats.rb`. We'll call it `refresh_doing.sh` for the purposes of these instructions
+3. In your `.doingrc` (run `doing config`), add the following line:
+    
+        run_after: /path/to/refresh_doing.sh
+
+Now whenever you run a command that alters the doing file, this script will be called.
+
+#### Bunch
+
+If you've added Bunch buttons, you can have Bunch update your widgets whenever it opens or closes a Bunch. Add the UUIDs for the Bunch buttons to your config, and add a `folder.frontmatter` file to your Bunch Folder with `run after` and `run after close` frontmatter keys to run a script that calls `btt_stats.rb refresh bunch:BunchName`. This is detailed in the "Optimization" section of [this page](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).
