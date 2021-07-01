@@ -162,4 +162,8 @@ Now whenever you run a command that alters the doing file, this script will be c
 
 #### Bunch
 
-If you've added Bunch buttons, you can have Bunch update your widgets whenever it opens or closes a Bunch. Add the UUIDs for the Bunch buttons to your config, and add a `folder.frontmatter` file to your Bunch Folder with `run after` and `run after close` frontmatter keys to run a script that calls `btt_stats.rb refresh bunch:BunchName`. This is detailed in the "Optimization" section of [this page](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).
+If you've added Bunch buttons, you can have Bunch update your widgets whenever it opens or closes a Bunch. Add the UUIDs for the Bunch buttons to your config, and add a `folder.frontmatter` file to your Bunch Folder with `run after` and `run after close` frontmatter keys to run a script that calls `btt_stats.rb refresh bunch:$1`, then pass the Bunch's name as the argument. If the Bunch name has spaces in it, the script will need to transform the Bunch title to match the key you added to the refresh config.
+
+    $ ~/scripts/refresh_btt.sh "${title}"
+
+This is detailed in the "Optimization" section of [this page](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).
