@@ -79,6 +79,8 @@ ip wan - WAN IP
 network location - Network Location
 network interface - Network Interface
 doing - Doing
+close - Touch Bar Close Button
+bunch - Bunch Group
 ```
 
 As noted in the output above, the first argument after `add` must be either `touch` or `menu`, which tells the script whether to add the widget to the Touch Bar or the menu bar. A complete command that adds a CPU meter to your Touch Bar would look like:
@@ -140,7 +142,7 @@ You can test the output by running `doing view btt` on the command line. Add the
 
 ### Bunch Setup
 
-There's a separate script in this repo called `create_bunch_buttons.rb`. It will get a list of all your Bunches and create a widget for each one. Clicking the widget will toggle that Bunch, and its background will be determined by the open/closed state of its bunch. Setting up the necessary scripts is [detailed here](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).
+You can add a touch bar group for Bunch using `btt_stats.rb add touch bunch`. It will get a list of all your Bunches and create a widget for each one. Clicking the widget will toggle that Bunch, and its background will be determined by the open/closed state of its bunch. Setting up the necessary scripts is [detailed here](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).
 
 ### Refresh Widget Shortcuts
 
@@ -148,22 +150,24 @@ In a lot of cases it's more efficient to "push" updates to the widgets rather th
 
 In both cases, it's worthwhile to set up a "hook" to refresh the widgets on change.
 
+When setting up the refresh command, `btt_stats.rb` can simplify the configuration process. Just select the widget you want to refresh in the BetterTouchTool configuration panel, type ⌘C to copy the widget's info, then immediately run `btt_stats.rb uuids`. The clipboard will be parsed and a block of YAML will be output, ready to be added to your configuration file (`~/.config/bttstats.yml`). If you select a group, a YAML dictionary will be created with an entry for each widget in the group.
+
 #### Doing
 
 The latest version of the doing gem has a configuration option that will run a script any time the doing file is updated. To make use of this, you need to do the following:
 
 1. Add a `doing` key to the refresh section of the `~/.config/bttstats.yml` file with the UUID of the doing widget (right click the widget and select "Copy UUID")
-2. Create a shell script that just runs `btt_stats.rb refresh doing`. You'll probably want to hardcode the path to `btt_stats.rb`. We'll call it `refresh_doing.sh` for the purposes of these instructions
-3. In your `.doingrc` (run `doing config`), add the following line:
+2. In your `.doingrc` (run `doing config`), add the following line:
     
-        run_after: /path/to/refresh_doing.sh
+        run_after: /path/to/btt_stats.rb refresh doing
 
-Now whenever you run a command that alters the doing file, this script will be called.
+Now whenever you run a command that alters the doing file, the widget will automatically be refreshed.
 
 #### Bunch
 
-If you've added Bunch buttons, you can have Bunch update your widgets whenever it opens or closes a Bunch. Add the UUIDs for the Bunch buttons to your config, and add a `folder.frontmatter` file to your Bunch Folder with `run after` and `run after close` frontmatter keys to run a script that calls `btt_stats.rb refresh bunch:$1`, then pass the Bunch's name as the argument. If the Bunch name has spaces in it, the script will need to transform the Bunch title to match the key you added to the refresh config.
+If you've added Bunch buttons, you can have Bunch update your widgets whenever it opens or closes a Bunch. 
 
-    $ ~/scripts/refresh_btt.sh "${title}"
+1. Add the UUIDs for the Bunch buttons to your config using the instructions above (select the Bunch group, copy, and run `btt_stats.rb uuids`)
+2. Add a `folder.frontmatter` file to your root Bunch Folder with `run after` and `run after close` frontmatter keys set to `btt_stats.rb refresh "bunch:${title}"`.
 
 This is detailed in the "Optimization" section of [this page](https://bunchapp.co/docs/integration/advanced-scripting/bunch-status-board/).

@@ -206,12 +206,19 @@ end
 def available_commands(table, key = nil)
   type = key.nil? ? '' : "#{key} "
   puts "Available #{type}commands:"
+  output = []
   table.each do |k, v|
     if v.key?(:title)
-      puts %(#{type}#{k} - #{v[:title]})
+      output << ["#{type}#{k}", v[:title]]
     else
-      v.each { |subk, subv| puts "#{type}#{k} #{subk} - #{subv[:title]}" }
+      v.each { |subk, subv| output << ["#{type}#{k} #{subk}", subv[:title]] }
     end
+  end
+  max = output.max {|a,b| a[0].length <=> b[0].length }
+  pad = max[0].length + 2
+  output.each do |line|
+    cmd = line[0] + " " + ("." * (pad - line[0].length))
+    puts "#{cmd} #{line[1]}"
   end
 end
 
