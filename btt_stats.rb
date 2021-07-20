@@ -316,7 +316,7 @@ def bunch_status_script
   stats_dir = File.dirname(__FILE__)
   status_script = File.join(stats_dir, 'bunch_status_check.rb')
   unless File.exist?(status_script)
-    script =<<~EOSCRIPT
+    script =<<~'EOSCRIPT'
       #!/usr/bin/env ruby
       # frozen_string_literal: true
 
@@ -392,8 +392,8 @@ def add_touch_bar_bunch_group
   warn "Added Bunch group to Touch Bar with #{bunches.count} bunches."
   warn "To complete the setup, right click the new group in BetterTouchTool and select 'Copy',
     then run `#{File.basename(__FILE__)} uuids` while the group data is still in your clipboard.
-    The script will output a configuration block you can add to your configuration in #{File.expand_path($config_file)}. This
-    can then be used to refresh the widget states without polling. See <http://ckyp.us/jcBxaM> for more info."
+    The script will output a configuration block you can add to your configuration in #{File.expand_path($config_file)}.
+    This can then be used to refresh the widget states without polling. See <http://ckyp.us/jcBxaM> for more info."
 end
 
 def uuids_from_clipboard
