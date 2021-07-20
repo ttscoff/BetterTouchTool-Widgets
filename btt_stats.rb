@@ -98,12 +98,13 @@ parser = OptionParser.new do |opts|
   opts.separator '    doing'
   opts.separator '    refresh [key:path ...]'
   opts.separator '    add [touch|menu] COMMAND'
-  opts.separator '    uuids'
+  opts.separator '    uuids [install]'
   opts.separator ''
   opts.separator "To add widgets automatically, use: #{File.basename(__FILE__)} add [touch|menu] [command]"
   opts.separator '    where command is one of cpu, memory, lan, wan, interface, location, doing, or bunch'
   opts.separator 'To quickly get widget UUIDs for use with the refresh command, select a widget or group in'
   opts.separator "    BetterTouchTool configuration, press ⌘C to copy it, then run: #{File.basename(__FILE__)} uuids"
+  opts.separator "    (run `#{File.basename(__FILE__)} uuids install` to have them added to your config automatically.)"
   opts.separator ''
   opts.separator 'Options:'
 
@@ -403,7 +404,7 @@ def add_touch_bar_bunch_group
     This can then be used to refresh the widget states without polling. See <http://ckyp.us/jcBxaM> for more info."
 end
 
-def uuids_from_clipboard
+def uuids_from_clipboard(install = false)
   input = `pbpaste`.strip.force_encoding('utf-8')
 
   begin
@@ -425,8 +426,20 @@ def uuids_from_clipboard
   else
     results[data['BTTWidgetName']] = data['BTTUUID']
   end
-  warn "Add the following to #{File.expand_path($config_file)} for use with the `refresh` command:"
-  puts YAML.dump({refresh: results})
+  if (install)
+    file = File.expand_path($config_file)
+    config = YAML.load(IO.read(file))
+    refresh = config[:refresh] || {}
+    refresh = refresh.merge(results)
+    config[:refresh] = refresh
+    File.open(file, 'w') do |f|
+      f.puts YAML.dump(config)
+    end
+    warn "New keys added to #{file} for use with the `refresh` command."
+  else
+    warn "Add the following to #{File.expand_path($config_file)} for use with the `refresh` command:"
+    puts YAML.dump({refresh: results})
+  end
   Process.exit 0
 end
 
@@ -582,7 +595,8 @@ chart = ''
 
 case ARGV[0]
 when /^uuid/
-  uuids_from_clipboard
+  ARGV.shift
+  uuids_from_clipboard(ARGV[0] && ARGV[0] =~ /^install/)
 when /^add/
   ARGV.shift
   unless ARGV[0] =~ /^(touch|menu)/i
