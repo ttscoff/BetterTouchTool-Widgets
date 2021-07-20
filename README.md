@@ -6,6 +6,8 @@ A collection of tools for creating Touch Bar and Menu Bar widgets using BetterTo
 
 You can put the `btt_stats.rb` script anywhere you like. It doesn't necessarily even need to be in your `$PATH`, as you'll need to hardcode it's absolute path in BetterTouchTool anyway. All the same, I personally keep mine in `~/scripts`, which happens to be in my PATH, thus it's easy to run from the command line.
 
+Make the script executable by running `chmod a+x /path/to/btt_stats.rb`.
+
 ### Configuration
 
 To create a configuration file, run `btt_stats.rb -h`. This will show the help screen, and also create an initial configuration file at `~/.config/bttstats.yml`. Open that file in any text editor and edit the options as you see fit. They're described in comments below for reference.
