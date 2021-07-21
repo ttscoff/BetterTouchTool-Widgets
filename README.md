@@ -152,7 +152,9 @@ In a lot of cases it's more efficient to "push" updates to the widgets rather th
 
 In both cases, it's worthwhile to set up a "hook" to refresh the widgets on change.
 
-When setting up the refresh command, `btt_stats.rb` can simplify the configuration process. Just select the widget you want to refresh in the BetterTouchTool configuration panel, type ⌘C to copy the widget's info, then immediately run `btt_stats.rb uuids`. The clipboard will be parsed and a block of YAML will be output, ready to be added to your configuration file (`~/.config/bttstats.yml`). If you select a group, a YAML dictionary will be created with an entry for each widget in the group.
+When setting up the refresh command, `btt_stats.rb` can simplify the configuration process. Just select the widget you want to refresh in the BetterTouchTool configuration panel, type ⌘C to copy the widget's info, then immediately run `btt_stats.rb uuids`. The clipboard will be parsed and a block of YAML will be output, ready to be added to your configuration file (`~/.config/bttstats.yml`). If you run `btt_stats.rb uuids install`, the resulting config options will automatically be added to your config file, merging with any current refresh items (existing items with the same name will be overwritten).
+
+If you select a group, a YAML dictionary will be created with the group name as the key, containing entries for each widget in the group. These can be accessed using a key:path: `btt_stats.rb refresh GROUP:WIDGET`.
 
 #### Doing
 
