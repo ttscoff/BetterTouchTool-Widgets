@@ -508,18 +508,17 @@ def refresh_key(settings, args)
           settings.keys.each do |k|
             if k.gsub(/ /, '') =~ /^#{key.gsub(/ /, '')}$/i
               new_setting = settings[k]
-              arg = k
               break
             end
           end
           if new_setting
             settings = new_setting
           else
-            warn "Refresh config does not contain key path #{arg}"
+            warn %(Refresh config does not contain key path "#{arg}")
             Process.exit 1
           end
         else
-          warn "Refresh config does not contain key path #{arg}"
+          warn %(Refresh config does not contain key path "#{arg}")
           Process.exit 1
         end
 
