@@ -962,8 +962,8 @@ when /^doing/
   #     tags: done
   chart = `/usr/local/bin/doing view btt`.strip.gsub(/(\e\[[\d;]+m)/, '')
   colors = settings[:colors][:activity]
-  color = chart.length.positive? ? colors[:active][:bg] : colors[:inactive][:bg].btt_color
-  font_color = chart.length.positive? ? colors[:active][:fg] : colors[:inactive][:fg].btt_color
+  color = chart.length.positive? ? colors[:active][:bg].btt_color : colors[:inactive][:bg].btt_color
+  font_color = chart.length.positive? ? colors[:active][:fg].btt_color : colors[:inactive][:fg].btt_color
 when /^mem/
   mem_free = `memory_pressure | tail -n 1 | awk '{ print $NF; }' | tr -d '%'`.to_i
   mem_used = 100 - mem_free
