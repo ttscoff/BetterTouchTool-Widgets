@@ -11,11 +11,98 @@ require 'json'
 require 'shellwords'
 $config_file = '~/.config/bttstats.yml'
 
+# Hash methods
+class ::Hash
+  # Check that second hash contains all the keys of the first (nested compare)
+  def compare_keys(second)
+    res = true
+
+    each do |k, v|
+      if second.key?(k) && second[k].class == v.class
+        if v.is_a? Hash
+          res = v.compare_keys(second[k])
+          break unless res
+        else
+          next
+        end
+      else
+        res = false
+        break
+      end
+    end
+
+    res
+  end
+
+  def deep_merge(second)
+    merger = proc { |_, v1, v2| Hash === v1 && Hash === v2 ? v1.merge(v2, &merger) : Array === v1 && Array === v2 ? v1 | v2 : [:undefined, nil, :nil].include?(v2) ? v1 : v2 }
+    merge(second.to_h, &merger)
+  end
+
+  def to_btt_url(method)
+    query = CGI.escape(to_json).gsub(/\+/, '%20')
+    %(btt://#{method}/?json=#{query})
+  end
+
+  def to_btt_as(method)
+    query = to_json.gsub(/\\"/, '\\\\\\\\"').gsub(/"/, '\\\\"')
+    %(tell application "BetterTouchTool" to #{method} "#{query}")
+  end
+end
+
+# String methods
+class ::String
+  def rgba_to_btt
+    elements = match(/rgba?\((?<r>\d+), *(?<g>\d+), *(?<b>\d+)(?:, *(?<a>[\d.]+))?\)/)
+    alpha = elements['a'] ? 255 * elements['a'].to_f : 255
+    %(#{elements['r']},#{elements['g']},#{elements['b']},#{alpha.to_i})
+  end
+
+  def hex_to_btt
+    rgb = match(/^#?(..)(..)(..)$/).captures.map(&:hex)
+    "#{rgb.join(',')},255"
+  end
+
+  def btt_color
+    color = strip.gsub(/ +/, '').downcase
+    case color
+    when /^rgba?\(\d+,\d+,\d+(,(0?\.\d+|1(\.0+)?))?\)$/
+      color.rgba_to_btt
+    when /^#?[a-f0-9]{6}$/
+      color.hex_to_btt
+    else
+      '25,25,25,255'
+    end
+  end
+end
+
 # Settings
 defaults = {
   raw: false,
   bar_width: 8,
   colors: {
+    zoom: {
+      on: {
+        fg: '#000000',
+        bg: 'rgba(171, 242, 19, 1.00)'
+      },
+      off: {
+        fg: '#ffffff',
+        bg: 'rgba(255, 0, 0, 1.00)'
+      },
+      record: {
+        fg: '#ffffff',
+        bg: 'rgba(18, 203, 221, 1.00)'
+      },
+      recording: {
+        fg: '#ffffff',
+        bg: 'rgba(182, 21, 15, 1.00)'
+      },
+      leave: {
+        fg: '#ffffff',
+        bg: 'rgba(255, 0, 0, 1.00)'
+      }
+    },
     # Default bar width
     activity: {
       active: {
@@ -51,13 +138,33 @@ defaults = {
         bg: 'rgba(197, 85, 98, 1.00)'
       }
     ]
+  },
+  ui_strings: {
+    window_menu: 'Window',
+    meeting_menu: 'Meeting',
+    close: 'Close',
+    unmute_audio: 'Unmute Audio',
+    mute_audio: 'Mute Audio',
+    start_video: 'Start Video',
+    stop_video: 'Stop Video',
+    start_share: 'Start Share',
+    stop_share: 'Stop Share',
+    record: 'Record',
+    stop_record: 'Stop Recording',
+    record_to_cloud: 'Record to the Cloud'
   }
 }
 config = File.expand_path($config_file)
 if File.exist?(config)
   user_config = YAML.load(IO.read(config))
   if user_config.is_a? Hash
-    settings = defaults.merge(user_config)
+    settings = defaults.deep_merge(user_config)
+    unless defaults.compare_keys(user_config)
+      warn "Adding new keys to #{config}"
+      File.open(config, 'w') do |f|
+        f.puts YAML.dump(settings)
+      end
+    end
   else
     warn "Invalid user configuration in #{config}"
     settings = defaults
@@ -71,6 +178,8 @@ else
   end
   warn "Configuration file written to #{config}"
 end
+
+$ui_strings = settings[:ui_strings]
 
 # defaults
 options = {
@@ -170,27 +279,27 @@ end
 
 parser.parse!
 
-def rgba_to_btt(color)
-  elements = color.match(/rgba?\((?<r>\d+), *(?<g>\d+), *(?<b>\d+)(?:, *(?<a>[\d.]+))?\)/)
-  alpha = elements['a'] ? 255 * elements['a'].to_f : 255
-  %(#{elements['r']},#{elements['g']},#{elements['b']},#{alpha.to_i})
+# Utility methods
+def app_running?(app)
+  not `ps ax|grep -i "#{app}.app"|grep -v grep`.empty?
 end
 
-def hex_to_btt(color)
-  rgb = color.match(/^#?(..)(..)(..)$/).captures.map(&:hex)
-  "#{rgb.join(',')},255"
+def ui(key)
+  key = key.to_sym unless key.is_a? Symbol
+  $ui_strings[key]
 end
 
-def color_to_btt(color)
-  color = color.strip.gsub(/ +/, '').downcase
-  case color
-  when /^rgba?\(\d+,\d+,\d+(,(0?\.\d+|1(\.0+)?))?\)$/
-    rgba_to_btt(color)
-  when /^#?[a-f0-9]{6}$/
-    hex_to_btt(color)
-  else
-    '25,25,25,255'
-  end
+def exit_empty(raw = false)
+  print raw ? '' : '{}'
+  Process.exit 0
+end
+
+def btt_action(action)
+  `/usr/bin/osascript -e 'tell app "BetterTouchTool" to #{action}'`
+end
+
+def osascript(script)
+  `/usr/bin/osascript -e #{Shellwords.escape(script)}`
 end
 
 def match_key(table, key)
@@ -248,6 +357,13 @@ def data_for_command(cmd)
     command: 'doing --truncate 45 --prefix " " -i --empty "…"',
     sfsymbol: 'checkmark.circle'
   }
+  table['zoom'] = {
+    'mic' => { title: 'Zoom Mute', icon_only: true, command: 'zoom stat mute', action: 'zoom toggle mute' },
+    'video' => { title: 'Zoom Video', icon_only: true, command: 'zoom stat video', action: 'zoom toggle video' },
+    'leave' => { title: 'Zoom Leave', icon_only: true, command: 'zoom stat leave', action: 'zoom leave' },
+    'share' => { title: 'Zoom Share', icon_only: true, command: 'zoom stat share', action: 'zoom toggle share' },
+    'record' => { title: 'Zoom Record', icon_only: true, command: 'zoom stat record', action: 'zoom toggle record' }
+  }
   table['close'] = {
     title: 'Touch Bar Close Button'
   }
@@ -277,17 +393,43 @@ def data_for_command(cmd)
   data
 end
 
-# Hash methods
-class Hash
-  def to_btt_url(method)
-    query = CGI.escape(to_json).gsub(/\+/, '%20')
-    %(btt://#{method}/?json=#{query})
+def add_touch_bar_button(specs)
+  specs[:fontsize] ||= 15
+  specs[:sfsymbol] ||= ''
+  specs[:icon_only] ||= false
+  data = {
+    'BTTWidgetName' => specs[:title],
+    'BTTTriggerType' => 642,
+    'BTTTriggerTypeDescription' => 'Shell Script / Task Widget',
+    'BTTTriggerClass' => 'BTTTriggerTypeTouchBar',
+    'BTTShellScriptWidgetGestureConfig' => '/bin/sh:::-c:::-:::',
+    'BTTEnabled2' => 1,
+    'BTTEnabled' => 1,
+    'BTTMergeIntoTouchBarGroups' => 0,
+    'BTTTriggerConfig' => {
+      'BTTTouchBarItemSFSymbolWeight' => 1,
+      'BTTTouchBarItemIconType' => 2,
+      'BTTTouchBarItemSFSymbolDefaultIcon' => specs[:sfsymbol],
+      'BTTTouchBarButtonFontSize' => specs[:fontsize].to_i,
+      'BTTTouchBarScriptUpdateInterval' => 5,
+      'BTTTouchBarShellScriptString' => "#{__FILE__} #{specs[:command]}",
+      'BTTTouchBarAppleScriptStringRunOnInit' => true,
+      'BTTTouchBarButtonName' => specs[:title],
+      'BTTTouchBarOnlyShowIcon' => specs[:icon_only]
+    }
+  }
+  if specs[:action]
+    action = {
+      'BTTPredefinedActionType' => 206,
+      'BTTPredefinedActionName' => 'Execute Shell Script / Task',
+      'BTTShellTaskActionScript' => "#{__FILE__} #{specs[:action]}",
+      'BTTShellTaskActionConfig' => '/bin/bash:::-c:::-:::'
+    }
+    data = data.merge(action)
   end
-
-  def to_btt_as(method)
-    query = to_json.gsub(/\\"/, '\\\\\\\\"').gsub(/"/, '\\\\"')
-    %(tell application "BetterTouchTool" to #{method} "#{query}")
-  end
+  script = data.to_btt_as('add_new_trigger')
+  osascript(script)
+  warn "Added #{specs[:title]} Touch Bar widget"
 end
 
 def add_menu_bar_button(specs)
@@ -318,6 +460,35 @@ def add_menu_bar_button(specs)
   script = data.to_btt_as('add_new_trigger')
   osascript(script)
   warn "Added #{specs[:title]} menu bar widget"
+end
+
+def add_touch_bar_close_button
+  json = JSON.parse(DATA.read)
+
+  raise "Error reading preset data" if json.nil? || !json.key?('close_button')
+
+  button = json['close_button']
+  script = button.to_btt_as('add_new_trigger')
+  osascript(script)
+  warn "Added Touch Bar button to close current group."
+end
+
+def add_named_trigger(specs)
+  data = {
+    'BTTTriggerType' => 643,
+    'BTTTriggerTypeDescription' => "Named Trigger: #{specs[:title]}",
+    'BTTTriggerClass' => 'BTTTriggerTypeOtherTriggers',
+    'BTTPredefinedActionType' => 206,
+    'BTTPredefinedActionName' => "Execute Shell Script / Task",
+    'BTTShellTaskActionScript' => "#{__FILE__} #{specs[:action]}",
+    'BTTShellTaskActionConfig' => '/bin/bash:::-c:::-:::',
+    "BTTTriggerName" => "#{specs[:title]}",
+    'BTTEnabled2' => 1,
+    "BTTEnabled" => 1
+  }
+  script = data.to_btt_as('add_new_trigger')
+  osascript(script)
+  warn "Added #{specs[:title]} named trigger"
 end
 
 def bunch_status_script
@@ -373,7 +544,7 @@ def add_touch_bar_bunch_group
 
   group['BTTAdditionalActions'].push(close_button)
 
-  bunches = `/usr/bin/osascript -e 'tell application "#{bunch_app}" to list bunches'`.strip.split(/, /)
+  bunches = osascript(%(tell application "#{bunch_app}" to list bunches)).strip.split(/, /)
   raise "Error retrieving Bunch list, is Bunch.app installed and configured?" if bunches.empty?
 
   bunches.each do |bunch|
@@ -443,54 +614,102 @@ def uuids_from_clipboard(install = false)
   Process.exit 0
 end
 
-def add_touch_bar_close_button
-  json = JSON.parse(DATA.read)
+# Status methods
 
-  raise "Error reading preset data" if json.nil? || !json.key?('close_button')
+def cpu(options, loads, cores)
+  unit = (options[:width].to_f / 100)
+  chart_arr = Array.new(options[:width], '░')
+  fills = %w[▒ ▓ █].reverse.slice(0, loads.length).reverse
+  loads.reverse.each_with_index do |ld, idx|
+    this_load = ((ld.to_f / cores) * 100)
+    this_load = 100 if this_load > 100
+    chart_arr.fill(fills[idx], 0, (unit * this_load).to_i)
+  end
 
-  button = json['close_button']
-  script = button.to_btt_as('add_new_trigger')
-  osascript(script)
-  warn "Added Touch Bar button to close current group."
+  chart_arr.join('')
 end
 
-def add_touch_bar_button(specs)
-  specs[:fontsize] ||= 15
-  specs[:sfsymbol] ||= ''
-  data = {
-    'BTTWidgetName' => specs[:title],
-    'BTTTriggerType' => 642,
-    'BTTTriggerTypeDescription' => 'Shell Script \/ Task Widget',
-    'BTTTriggerClass' => 'BTTTriggerTypeTouchBar',
-    'BTTShellScriptWidgetGestureConfig' => '\/bin\/sh:::-c:::-:::',
-    'BTTEnabled2' => 1,
-    'BTTEnabled' => 1,
-    'BTTMergeIntoTouchBarGroups' => 0,
-    'BTTTriggerConfig' => {
-      'BTTTouchBarItemSFSymbolWeight' => 1,
-      'BTTTouchBarItemIconType' => 2,
-      'BTTTouchBarItemSFSymbolDefaultIcon' => specs[:sfsymbol],
-      'BTTTouchBarButtonFontSize' => specs[:fontsize].to_i,
-      'BTTTouchBarScriptUpdateInterval' => 5,
-      'BTTTouchBarShellScriptString' => "#{__FILE__} #{specs[:command]}",
-      'BTTTouchBarAppleScriptStringRunOnInit' => true,
-      'BTTTouchBarButtonName' => specs[:title],
-      'BTTTouchBarOnlyShowIcon' => false
-    }
-  }
-  script = data.to_btt_as('add_new_trigger')
-  osascript(script)
-  warn "Added #{specs[:title]} Touch Bar widget"
+def split_cpu(options, loads, cores)
+  unit = (options[:width].to_f / 100)
+  chart1 = Array.new(options[:width], '░')
+  this_load = ((loads[0].to_f / cores) * 100)
+  this_load = 100 if this_load > 100
+  chart1.fill('█', 0, (unit * this_load).to_i)
+
+  avg5_load = (((loads[1].to_f / cores) * 100) * unit).to_i
+  avg5_load = 100 if avg5_load > 100
+  avg15_load = (((loads[2].to_f / cores) * 100) * unit).to_i
+  avg15_load = 100 if avg15_load > 100
+  chart2 = []
+  options[:width].times do |i|
+    if i <= avg5_load && i <= avg15_load
+      chart2.push('▇')
+    elsif i <= avg5_load
+      chart2.push('▀')
+    elsif i <= avg15_load
+      chart2.push('▄')
+    else
+      chart2.push('░')
+    end
+  end
+  # Attempt to indent second line based on title width and font size difference
+  indent = ' ' * (options[:prefix].length * 2.4).ceil
+  %(#{chart1.join('')}\\n#{indent}#{chart2.join('')})
 end
 
-def btt_action(action)
-  `/usr/bin/osascript -e 'tell app "BetterTouchTool" to #{action}'`
+def zoom_status
+  result = `osascript <<'APPLESCRIPT'
+    set zoomStatus to false
+    set callStatus to false
+    set micStatus to false
+    set videoStatus to false
+    set shareStatus to false
+    set recordStatus to false
+    tell application "System Events"
+      if exists (window 1 of process "zoom.us") then
+        set zoomStatus to true
+
+        tell application process "zoom.us"
+          if exists (menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+            set callStatus to true
+            if exists (menu item "#{ui(:mute_audio)}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+              set micStatus to true
+            else
+              set micStatus to false
+            end if
+            if exists (menu item "#{ui(:start_video)}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+              set videoStatus to false
+            else
+              set videoStatus to true
+            end if
+            if exists (menu item "#{ui(:start_share)}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+              set shareStatus to false
+            else
+              set shareStatus to true
+            end if
+            if exists (menu item "#{ui(:record_to_cloud)}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+              set recordStatus to false
+            else if exists (menu item "#{ui(:record)}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+              set recordStatus to false
+            else
+              set recordStatus to true
+            end if
+          end if
+        end tell
+      end if
+    end tell
+
+    return {zoom:zoomStatus, inMeeting:callStatus, micOn:micStatus, videoOn:videoStatus, isSharing:shareStatus, isRecording:recordStatus}
+  APPLESCRIPT`.strip.split(/, /)
+  status = {}
+  result.each do |stat|
+    parts = stat.split(/:/)
+    status[parts[0].to_sym] = parts[1] == 'true' ? true : false
+  end
+  status
 end
 
-def osascript(script)
-  `/usr/bin/osascript -e #{Shellwords.escape(script)}`
-end
-
+# Actions
 def refresh_key(settings, args)
   if args.length.zero?
     warn '--- Refreshing all widgets'
@@ -547,45 +766,49 @@ def refresh_widget(key, v)
   end
 end
 
-def cpu(options, loads, cores)
-  unit = (options[:width].to_f / 100)
-  chart_arr = Array.new(options[:width], '░')
-  fills = %w[▒ ▓ █].reverse.slice(0, loads.length).reverse
-  loads.reverse.each_with_index do |ld, idx|
-    this_load = ((ld.to_f / cores) * 100)
-    this_load = 100 if this_load > 100
-    chart_arr.fill(fills[idx], 0, (unit * this_load).to_i)
-  end
-
-  chart_arr.join('')
+def zoom_leave
+  `osascript <<'APPLESCRIPT'
+  tell application "zoom.us" to activate
+  tell application "System Events" to tell application process "zoom.us"
+      if exists (menu bar item "#{ui(:window_menu)}" of menu bar 1) then
+        click (menu item "#{ui(:close)}" of menu 1 of menu bar item "#{ui(:window_menu)}" of menu bar 1)
+        delay 0.5
+        click button 1 of window 1
+      end if
+  end tell
+  APPLESCRIPT`
 end
 
-def split_cpu(options, loads, cores)
-  unit = (options[:width].to_f / 100)
-  chart1 = Array.new(options[:width], '░')
-  this_load = ((loads[0].to_f / cores) * 100)
-  this_load = 100 if this_load > 100
-  chart1.fill('█', 0, (unit * this_load).to_i)
-
-  avg5_load = (((loads[1].to_f / cores) * 100) * unit).to_i
-  avg5_load = 100 if avg5_load > 100
-  avg15_load = (((loads[2].to_f / cores) * 100) * unit).to_i
-  avg15_load = 100 if avg15_load > 100
-  chart2 = []
-  options[:width].times do |i|
-    if i <= avg5_load && i <= avg15_load
-      chart2.push('▇')
-    elsif i <= avg5_load
-      chart2.push('▀')
-    elsif i <= avg15_load
-      chart2.push('▄')
-    else
-      chart2.push('░')
-    end
+def zoom_toggle(type)
+  case type
+  when /^(mut|mic)/i
+    menu_off = ui(:unmute_audio)
+    menu_on = ui(:mute_audio)
+  when /^(vid|cam)/i
+    menu_off = ui(:stop_video)
+    menu_on = ui(:start_video)
+  when /^share/i
+    menu_off = ui(:stop_share)
+    menu_on = ui(:start_share)
+  when /^rec/
+    menu_off = ui(:stop_record)
+    menu_on = ui(:record)
+  when /^cloud/
+    menu_off = ui(:stop_record)
+    menu_on = ui(:record_to_cloud)
+  else
+    raise "Invalid toggle type: #{type}"
   end
-  # Attempt to indent second line based on title width and font size difference
-  indent = ' ' * (options[:prefix].length * 2.4).ceil
-  %(#{chart1.join('')}\\n#{indent}#{chart2.join('')})
+
+  `osascript <<'APPLESCRIPT'
+  tell application "System Events" to tell application process "zoom.us"
+    if exists (menu item "#{menu_off}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1) then
+      click (menu item "#{menu_off}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1)
+    else
+      click (menu item "#{menu_on}" of menu 1 of menu bar item "#{ui(:meeting_menu)}" of menu bar 1)
+    end if
+  end tell
+  APPLESCRIPT`
 end
 
 color = ''
@@ -646,13 +869,78 @@ when /^refresh/
 
   refresh_key(settings[:refresh], ARGV)
   Process.exit 0
+when /^zoom/
+  ARGV.shift
+
+  case ARGV[0]
+  when /^stat/
+    exit_empty(options[:raw]) unless app_running?('zoom.us')
+
+    status = zoom_status
+
+    exit_empty(options[:raw]) unless status[:inMeeting]
+
+    ARGV.shift
+    colors = settings[:colors][:zoom]
+
+    case ARGV[0]
+    when /^(mic|mute)/
+      icon = status[:micOn] ? 'mic.fill' : 'mic.slash.fill'
+      c = status[:micOn] ? colors[:on] : colors[:off]
+      text = status[:micOn] ? 'Unmuted' : 'Muted'
+    when /^(vid|cam)/
+      icon = status[:videoOn] ? 'video.fill' : 'video.slash.fill'
+      c = status[:videoOn] ? colors[:on] : colors[:off]
+      text = status[:videoOn] ? 'Video On' : 'Video Off'
+    when /^(shar|desk)/
+      icon = status[:isSharing] ? 'rectangle.fill.on.rectangle.fill' : 'rectangle.fill.on.rectangle.fill.slash.fill'
+      c = status[:isSharing] ? colors[:on] : colors[:off]
+      text = status[:isSharing] ? 'Sharing' : 'Not Sharing'
+    when /^rec/
+      icon = status[:isRecording] ? 'record.circle.fill' : 'stop.circle'
+      c = status[:isRecording] ? colors[:recording] : colors[:record]
+      text = status[:isRecording] ? 'Recording' : 'Not Recording'
+    when /^leave/
+      exit_empty(options[:raw]) unless status[:inMeeting]
+      icon = 'figure.walk.circle'
+      text = 'Leave'
+      c = colors[:leave]
+    end
+
+    color, font_color = [c[:bg].btt_color, c[:fg].btt_color]
+
+    out = %({\"text\":\"#{text}\",\"sf_symbol_name\":\"#{icon}\",\"background_color\":\"#{color}\",\"font_color\":\"#{font_color}\"})
+    print out
+    Process.exit 0
+  when /^leave/
+    zoom_leave
+    Process.exit 0
+  when /^t/
+    # Toggle Actions mute, video, leave
+    ARGV.shift
+    case ARGV[0]
+    when /^(rec|cloud)/
+      zoom_toggle(ARGV[0] =~ /^c/ || ARGV[1] =~ /^c/ ? 'cloud' : 'record')
+    when /^(mic|mute)/
+      zoom_toggle('mic')
+    when /^(vid|cam)/
+      zoom_toggle('video')
+    when /^sh/
+      zoom_toggle('share')
+    else
+      raise "Unknown toggle: #{ARGV[0]}"
+    end
+    Process.exit 0
+  else
+    raise "Unknown zoom command: #{ARGV[0]}"
+  end
 when /^net/
   options[:background] = false
   chart = case ARGV[1]
           when /^i/ # Interface
-            `osascript -e 'tell app "System Events" to tell current location of network preferences to get name of first service whose active is true'`.strip
+            osascript('tell app "System Events" to tell current location of network preferences to get name of first service whose active is true').strip
           else # Location
-            `osascript -e 'tell app "System Events" to get name of current location of network preferences'`.strip
+            osascript('tell app "System Events" to get name of current location of network preferences').strip
           end
 when /^ip/
   options[:background] = false
@@ -674,8 +962,8 @@ when /^doing/
   #     tags: done
   chart = `/usr/local/bin/doing view btt`.strip.gsub(/(\e\[[\d;]+m)/, '')
   colors = settings[:colors][:activity]
-  color = color_to_btt(chart.length.positive? ? colors[:active][:bg] : colors[:inactive][:bg])
-  font_color = color_to_btt(chart.length.positive? ? colors[:active][:fg] : colors[:inactive][:fg])
+  color = chart.length.positive? ? colors[:active][:bg] : colors[:inactive][:bg].btt_color
+  font_color = chart.length.positive? ? colors[:active][:fg] : colors[:inactive][:fg].btt_color
 when /^mem/
   mem_free = `memory_pressure | tail -n 1 | awk '{ print $NF; }' | tr -d '%'`.to_i
   mem_used = 100 - mem_free
@@ -696,8 +984,8 @@ when /^mem/
   settings[:colors][:severity].each do |c|
     next unless mem_used <= c[:max]
 
-    font_color = color_to_btt(c[:fg])
-    color = color_to_btt(c[:bg])
+    font_color = c[:fg].btt_color
+    color = c[:bg].btt_color
     break
   end
 else
@@ -736,8 +1024,8 @@ else
     settings[:colors][:severity].each do |c|
       next unless curr_load <= c[:max]
 
-      color = color_to_btt(c[:bg])
-      font_color = color_to_btt(c[:fg])
+      color = c[:bg].btt_color
+      font_color = c[:fg].btt_color
       break
     end
   end
