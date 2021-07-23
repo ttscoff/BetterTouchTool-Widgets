@@ -40,6 +40,22 @@ To create a configuration file, run `btt_stats.rb -h`. This will show the help s
   - :max: 1000
     :fg: "#000000"
     :bg: rgba(197, 85, 98, 1.00)
+  :zoom: # Colors for Zoom buttons
+    :on: # Used for unmuted, video on, and sharing on
+      :fg: "#000000"
+      :bg: rgba(171, 242, 19, 1.00)
+    :off: # Used for muted, video off, and sharing off
+      :fg: "#ffffff"
+      :bg: rgba(255, 0, 0, 1.00)
+    :record: # Color when recording is inactive
+      :fg: "#ffffff"
+      :bg: rgba(18, 203, 221, 1.00)
+    :recording: # Color when recording is active
+      :fg: "#ffffff"
+      :bg: rgba(182, 21, 15, 1.00)
+    :leave: # Color for "Leave" button
+      :fg: "#ffffff"
+      :bg: rgba(255, 0, 0, 1.00)
 :refresh:
 # Refresh settings are shortcuts to refreshing widgets using 
 # `btt_stats.rb refresh KEY`. You can define any key name you want,
@@ -121,8 +137,59 @@ Available subcommands are:
     - use `ip wan` to output the public (WAN) IP address
 - `btt_stats.rb network` outputs the current Network Location
     - use `network interface` to output the active network interface (Ethernet, Wi-fi, etc.), that currently has priority.
+- `btt_stats.rb zoom status` outputs status reports for zoom states
+  - All states return empty if Zoom is not running or no meeting is active. If active, an icon and color are returned indicating each state
+  - `status mic` (muted or unmuted)
+  - `status video` (video on or off)
+  - `status sharing` (desktop sharing active or inactive)
+  - `status recording` (local or cloud recording active) 
+- `btt_stats.rb zoom` can also perform actions
+  - `zoom mute` toggles mic mute
+  - `zoom video` toggles camera
+  - `zoom share` toggles desktop sharing
+  - `zoom leave` leaves the current meeting
+  - `zoom record` toggles local recording
+  - `zoom cloud` toggles cloud recording
 - `btt_stats.rb doing` will output any active `doing` task (only the most recent). This requires having a `btt` view in `.doingrc` (see below)
 - `refresh [key:path ...]` is a shortcut to trigger a refresh of a configured widget
+
+### Zoom setup
+
+Zoom buttons only work well with the Touch Bar --- in their current implementation they're a bit frustrating as menu bar widgets.
+
+You can add buttons for mic, video, leave, share, and record.
+
+```
+btt_stats.rb add zoom mic
+btt_stats.rb add zoom video
+btt_stats.rb add zoom leave
+btt_stats.rb add zoom share
+btt_stats.rb add zoom record
+```
+
+Buttons will disappear if a Zoom meeting isn't active. Buttons added using the script also have associated actions assigned for toggling their related function (mute, video, etc.).
+
+You can customize the colors for various buttons and states in `:colors:` config in `~/.config/bttstats.yml`.
+
+#### Faster Refreshing
+
+The buttons take up to 5 seconds to update after a setting changes. If you'd like a faster response when toggling from the Touch Bar, add the UUIDs for the buttons to your `:refresh` config. You can hit ⌘C on each widget and then run `btt_stats.rb uuids install` to add them to your config.
+
+Then add a refresh command to the button's shell script action (modifying for each type):
+
+```
+btt_stats.rb zoom toggle mute
+sleep 1
+btt_stats.rb refresh "Zoom Mute"
+```
+
+The `sleep` delay is needed because the script uses AppleScript UI scripting to toggle the buttons, so it takes a second for the change to register.
+
+The refresh will only be triggered when toggling from the Touch Bar. If you toggle the feature from the app or elsewhere, there will still be a 5-second delay.
+
+#### Language Specific
+
+Because the Zoom functions use UI scripting and are only set up for English, if you're using a non-English system, you'll need to modify the menu strings it's looking for. In `~/.config/bttstats.yml`, edit the `:ui_strings` section with appropriate names for the menu items in your language.
 
 ### Doing setup
 
