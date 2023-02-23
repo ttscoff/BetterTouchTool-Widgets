@@ -87,6 +87,8 @@ $ btt_stats.rb add
 First argument must be 'touch' or 'menu'
 Example: btt_stats.rb add touch ip lan
 Available commands:
+batt - battery charge
+batt source - power source (battery/AC)
 cpu bar - CPU Bar
 cpu double - CPU Split Bar
 cpu percent - CPU Percent, 1m avg
@@ -123,6 +125,9 @@ Use `btt_stats.rb SUBCOMMAND` to output various widgets. All commands respond to
 
 Available subcommands are:
 
+- `btt_stats.rb batt` outputs a line chart showing battery charge level
+    - `batt -p` outputs just the charge percentage
+    - `batt source` outputs the power source
 - `btt_stats.rb cpu` outputs a graph of current CPU load. It has a few options available:
     - `cpu --averages` can limit it to certain averages (1, 5, or 15m). To show just the 5 and 15m averages, you would use `cpu --averages 5,15`. In regular graph mode averages are overlapping, with the lowest average (default 1 minute) in a dark bar on top.
     - You can output a percentage instead of a graph with `cpu --percent`.
