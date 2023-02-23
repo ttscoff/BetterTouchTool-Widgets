@@ -23,6 +23,19 @@ To create a configuration file, run `btt_stats.rb -h`. This will show the help s
     :inactive:
       :fg: "#ffffff" # Colors for when no task was returned by the `doing` subcommand
       :bg: rgba(67, 76, 95, 1.00)
+  :charge:
+  - :max: 20
+    :fg: "#000000"
+    :bg: rgba(197, 85, 98, 1.00)
+  - :max: 50
+    :fg: "#000000"
+    :bg: rgba(210, 135, 109, 1.00)
+  - :max: 75
+    :fg: "#000000"
+    :bg: rgba(210, 135, 109, 1.00)
+  - :max: 1000
+    :fg: "#000000"
+    :bg: rgba(162, 191, 138, 1.00)
   :severity:
   # Severity levels define the foreground and background colors for 
   # a percentage at or below a certain threshold.
