@@ -18,7 +18,7 @@ class ::Hash
     res = true
 
     each do |k, v|
-      if second.key?(k) && second[k] == v.class
+      if second.key?(k) && second[k].is_a?(v.class)
         next unless v.is_a? Hash
 
         res = v.compare_keys(second[k])
@@ -208,10 +208,10 @@ parser = OptionParser.new do |opts|
   opts.separator '    cpu*'
   opts.separator '    memory'
   opts.separator '    ip [lan|wan*]'
-  opts.separator '    network [interface|location*]'
+  opts.separator '    network [interface|speed|location*]'
   opts.separator '    doing'
   opts.separator '    refresh [key:path ...]'
-  opts.separator '    add [touch|menu] COMMAND'
+  opts.separator '    add [touch|menu|streamdeck] COMMAND'
   opts.separator '    uuids [install]'
   opts.separator ''
   opts.separator "To add widgets automatically, use: #{File.basename(__FILE__)} add [touch|menu|streamdeck] [command]"
@@ -361,7 +361,12 @@ def data_for_command(cmd)
   }
   table['network'] = {
     'location' => { title: 'Network Location', command: 'network location' },
-    'interface' => { title: 'Network Interface', command: 'network interface' }
+    'interface' => { title: 'Network Interface', command: 'network interface' },
+    'speed' => {
+      'up' => { title: 'Internet Upload Speed', command: 'network speed up' },
+      'down' => { title: 'Internet Download Speed', command: 'network speed down' },
+      'both' => { title: 'Internet Speed', command: 'network speed both' }
+    }
   }
   table['doing'] = {
     title: 'Doing',
@@ -1039,6 +1044,15 @@ def volume_down(inc)
   `osascript -e "set volume output volume (output volume of (get volume settings) - #{inc.to_i})"`
 end
 
+def speed_test
+  res = `networkQuality`
+
+  up = res.match(/Up(?:load|link) capacity: (\d+\.\d+) Mbps/)[1].to_i
+  down = res.match(/Down(?:load|link) capacity: (\d+\.\d+) Mbps/)[1].to_i
+
+  { up: up, down: down }
+end
+
 color = ''
 font_color = ''
 chart = ''
@@ -1255,6 +1269,21 @@ when /^zoom/
 when /^net/
   options[:background] = false
   chart = case ARGV[1]
+          when /^s/
+            res = speed_test
+            text = case ARGV[2]
+                   when /^u/
+                     "↑#{res[:up]}Mbps"
+                   when /^d/
+                     "↓#{res[:down]}Mbps"
+                   else
+                     "↓#{res[:down]}\\n↑#{res[:up]}"
+                   end
+                   bg = settings[:colors][:activity][:active][:bg].btt_color
+                   fg = settings[:colors][:activity][:active][:fg].btt_color
+            out = %({\"text\":\"#{text}\",\"BTTStreamDeckBackgroundColor\": \"#{bg}\",\"background_color\":\"#{bg}\",\"font_color\":\"#{fg}\"})
+            print out
+            Process.exit 0
           when /^i/ # Interface
             osascript('tell app "System Events" to tell current location of network preferences to get name of first service whose active is true').strip
           else # Location
