@@ -1336,7 +1336,7 @@ when /^doing/
 when /^batt/
   batt_info = `pmset -g batt`.strip
   source = batt_info =~ /'Battery Power'/ ? 'Battery' : 'AC'
-  percent = batt_info.match(/(\d+)%/)[1].to_i
+  percent = batt_info =~ /\d+%/ ? batt_info.match(/(\d+)%/)[1].to_i : 0
   color = ''
   font_color = ''
   chart = case ARGV[1]
