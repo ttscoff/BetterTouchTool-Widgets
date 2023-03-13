@@ -121,6 +121,28 @@ defaults = {
     },
     # Colors for level indicator, can be hex or rgb(a)
     # max is cutoff percentage for indicator level
+    charge: [
+      {
+        max: 20,
+        fg: '#000000',
+        bg: 'rgba(197, 85, 98, 1.00)'
+      },
+      {
+        max: 50,
+        fg: '#000000',
+        bg: 'rgba(210, 135, 109, 1.00)'
+      },
+      {
+        max: 75,
+        fg: '#000000',
+        bg: 'rgba(210, 135, 109, 1.00)'
+      },
+      {
+        max: 1000,
+        fg: '#000000',
+        bg: 'rgba(162, 191, 138, 1.00)'
+      }
+    ],
     severity: [
       {
         max: 60,
@@ -300,7 +322,7 @@ def exit_empty(raw = false)
 end
 
 def btt_action(action)
-  $stderr.puts action
+  warn action
   `/usr/bin/osascript -e 'tell app "BetterTouchTool" to #{action}'`
 end
 
@@ -340,10 +362,10 @@ end
 
 def data_for_command(cmd)
   table = {}
-  table['audio'] = {
-    'mute' => { title: 'Mute', command: 'audio status mute', icon_only: true, action: 'audio mute toggle' },
-    'volumeup' => { title: 'Volume Up', command: 'audio status volume', action: 'audio volume up 10' },
-    'volumedown' => { title: 'Volume Down', command: 'audio status volume', action: 'audio volume down 10' }
+  table['battery'] = {
+    'source' => { title: 'Power Source', command: 'battery source', fontsize: 10, monospace: 1 },
+    'bar' => { title: 'Battery Bar', command: 'battery', fontsize: 10, monospace: 1 },
+    'percent' => { title: 'Battery Percent', command: 'battery -p', fontsize: 15 }
   }
   table['cpu'] = {
     'bar' => { title: 'CPU Bar', command: 'cpu -c 1 --top -i', fontsize: 10, monospace: 1 },
@@ -404,7 +426,7 @@ def data_for_command(cmd)
     Process.exit 1
   end
 
-  $stderr.puts "Button type not found: #{cmd.join(' ')}" if data.nil?
+  warn "Button type not found: #{cmd.join(' ')}" if data.nil?
 
   data
 end
@@ -1311,6 +1333,35 @@ when /^doing/
   colors = settings[:colors][:activity]
   color = chart.length.positive? ? colors[:active][:bg].btt_color : colors[:inactive][:bg].btt_color
   font_color = chart.length.positive? ? colors[:active][:fg].btt_color : colors[:inactive][:fg].btt_color
+when /^batt/
+  batt_info = `pmset -g batt`.strip
+  source = batt_info =~ /'Battery Power'/ ? 'Battery' : 'AC'
+  percent = batt_info.match(/(\d+)%/)[1].to_i
+  color = ''
+  font_color = ''
+  chart = case ARGV[1]
+          when /source/
+            chart = source
+          else
+            settings[:colors][:charge].each do |c|
+              next unless percent <= c[:max]
+
+              color = c[:bg].btt_color
+              font_color = c[:fg].btt_color
+              break
+            end
+
+            if options[:percent]
+              "#{percent}%"
+            else
+              unit = (options[:width].to_f / 100)
+
+              chart_arr = Array.new(options[:width], '░')
+              chart_arr.fill('█', 0, (unit * percent).to_i)
+
+              chart_arr.join('')
+            end
+          end
 when /^mem/
   mem_free = `memory_pressure | tail -n 1 | awk '{ print $NF; }' | tr -d '%'`.to_i
   mem_used = 100 - mem_free
