@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby -W0
+#!/usr/bin/env ruby -W1
 # frozen_string_literal: true
 
 # Memory, CPU, and other stats formatted to use in a BetterTouchTool touch bar
@@ -187,13 +187,13 @@ if File.exist?(config)
   if user_config.is_a? Hash
     settings = defaults.deep_merge(user_config)
     # unless defaults.compare_keys(user_config)
-    #   $stderr.puts "Adding new keys to #{config}"
+    #   warn "Adding new keys to #{config}"
     #   File.open(config, 'w') do |f|
     #     f.puts YAML.dump(settings)
     #   end
     # end
   else
-    $stderr.puts "Invalid user configuration in #{config}"
+    warn "Invalid user configuration in #{config}"
     settings = defaults
   end
 else
@@ -203,7 +203,7 @@ else
   File.open(config, 'w') do |f|
     f.puts yaml
   end
-  $stderr.puts "Configuration file written to #{config}"
+  warn "Configuration file written to #{config}"
 end
 
 $ui_strings = settings[:ui_strings]
@@ -467,7 +467,7 @@ def add_touch_bar_button(specs)
   end
   script = data.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts "Added #{specs[:title]} Touch Bar widget"
+  warn "Added #{specs[:title]} Touch Bar widget"
 end
 
 def add_stream_deck_button(specs)
@@ -521,7 +521,7 @@ def add_stream_deck_button(specs)
   end
   script = data.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts "Added #{specs[:title]} Touch Bar widget"
+  warn "Added #{specs[:title]} Touch Bar widget"
 end
 
 def add_menu_bar_button(specs)
@@ -551,7 +551,7 @@ def add_menu_bar_button(specs)
   }
   script = data.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts "Added #{specs[:title]} menu bar widget"
+  warn "Added #{specs[:title]} menu bar widget"
 end
 
 def add_touch_bar_close_button
@@ -562,7 +562,7 @@ def add_touch_bar_close_button
   button = json['close_button']
   script = button.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts 'Added Touch Bar button to close current group.'
+  warn 'Added Touch Bar button to close current group.'
 end
 
 def add_named_trigger(specs)
@@ -580,7 +580,7 @@ def add_named_trigger(specs)
   }
   script = data.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts "Added #{specs[:title]} named trigger"
+  warn "Added #{specs[:title]} named trigger"
 end
 
 def bunch_status_script
@@ -638,12 +638,12 @@ def bunch_status_script
     EOSCRIPT
     File.open(status_script, 'w') do |f|
       f.puts script
-      $stderr.puts "Created #{status_script}"
+      warn "Created #{status_script}"
     end
   end
   unless File.executable?(status_script)
     File.chmod(0777, status_script)
-    $stderr.puts "Made #{status_script} executable"
+    warn "Made #{status_script} executable"
   end
   status_script
 end
@@ -694,8 +694,8 @@ def add_touch_bar_bunch_group
   end
   script = group.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts "Added Bunch group to Touch Bar with #{bunches.count} bunches."
-  $stderr.puts "To complete the setup, right click the new group in BetterTouchTool and select 'Copy',
+  warn "Added Bunch group to Touch Bar with #{bunches.count} bunches."
+  warn "To complete the setup, right click the new group in BetterTouchTool and select 'Copy',
     then run `#{File.basename(__FILE__)} uuids` while the group data is still in your clipboard.
     The script will output a configuration block you can add to your configuration in #{File.expand_path($config_file)}.
     This can then be used to refresh the widget states without polling. See <http://ckyp.us/jcBxaM> for more info."
@@ -762,8 +762,8 @@ def add_stream_deck_bunch_group
   end
   script = group.to_btt_as('add_new_trigger')
   osascript(script)
-  $stderr.puts "Added Bunch group to Stream Deck with #{bunches.count} bunches."
-  $stderr.puts "To complete the setup, right click the new group in BetterTouchTool and select 'Copy',
+  warn "Added Bunch group to Stream Deck with #{bunches.count} bunches."
+  warn "To complete the setup, right click the new group in BetterTouchTool and select 'Copy',
     then run `#{File.basename(__FILE__)} uuids` while the group data is still in your clipboard.
     The script will output a configuration block you can add to your configuration in #{File.expand_path($config_file)}.
     This can then be used to refresh the widget states without polling. See <http://ckyp.us/jcBxaM> for more info."
@@ -775,7 +775,7 @@ def uuids_from_clipboard(install = false)
   begin
     data = JSON.parse(input)
   rescue
-    $stderr.puts 'Invalid clipboard data, please copy a widget from BetterTouchTool before running' if data.nil?
+    warn 'Invalid clipboard data, please copy a widget from BetterTouchTool before running' if data.nil?
     Process.exit 1
   end
 
@@ -817,9 +817,9 @@ def uuids_from_clipboard(install = false)
     File.open(file, 'w') do |f|
       f.puts YAML.dump(config)
     end
-    $stderr.puts "New keys added to #{file} for use with the `refresh` command."
+    warn "New keys added to #{file} for use with the `refresh` command."
   else
-    $stderr.puts "Add the following to #{File.expand_path($config_file)} for use with the `refresh` command:"
+    warn "Add the following to #{File.expand_path($config_file)} for use with the `refresh` command:"
     puts YAML.dump({refresh: results})
   end
   Process.exit 0
@@ -939,60 +939,91 @@ def zoom_status
   status
 end
 
+class ::String
+  def to_rx
+    downcase.gsub(/ /, '').split(//).join('.{0,3}')
+  end
+end
+
 # Actions
+def find_keypath(arg, settings)
+  keypath = arg.split(/[:.]/)
+  new_keypath = []
+
+  while keypath.length.positive?
+    key = keypath[0]
+    break if settings.is_a? String
+
+    if settings.respond_to?(:key?)
+      new_setting = nil
+      settings.each_key do |k|
+        if k.gsub(/ /, '') =~ /#{key.to_rx}/i
+          new_setting = settings[k]
+          new_keypath.push(k)
+          break
+        end
+      end
+      if new_setting
+        settings = new_setting
+      else
+        warn %(Config does not contain key path "#{arg}")
+        Process.exit 0
+      end
+    else
+      warn %(Config does not contain key path "#{arg}")
+      Process.exit 0
+    end
+
+    keypath.shift
+  end
+
+  [settings, new_keypath.join(':')]
+end
+
+def trigger_key(settings, args)
+  raise 'Trigger requires a keypath' if args.length.zero?
+
+  args.each do |arg|
+    settings, keypath = find_keypath(arg, settings)
+
+    trigger_widget(keypath, settings)
+  end
+end
+
+def trigger_widget(key, uuid)
+  raise "Trigger only works with a single widget" unless uuid.is_a? String
+
+  warn "Triggering #{key}: #{uuid}"
+  btt_action(%(execute_assigned_actions_for_trigger "#{uuid}"))
+end
+
 def refresh_key(settings, args)
   if args.length.zero?
-    $stderr.puts '--- Refreshing all widgets'
+    warn '--- Refreshing all widgets'
     settings.each { |k, v| refresh_widget(k, v) }
   else
     args.each do |arg|
-      keypath = arg.split(/:/)
+      settings, keypath = find_keypath(arg, settings)
 
-      while keypath.length.positive?
-        key = keypath[0]
-        break if settings.is_a? String
-
-        if settings.respond_to?(:key?)
-          new_setting = nil
-          settings.each_key do |k|
-            if k.gsub(/ /, '') =~ /^#{key.gsub(/ /, '')}$/i
-              new_setting = settings[k]
-              break
-            end
-          end
-          if new_setting
-            settings = new_setting
-          else
-            $stderr.puts %(Refresh config does not contain key path "#{arg}")
-            Process.exit 0
-          end
-        else
-          $stderr.puts %(Refresh config does not contain key path "#{arg}")
-          Process.exit 0
-        end
-
-        keypath.shift
-      end
-
-      refresh_widget(arg, settings)
+      refresh_widget(keypath, settings)
     end
   end
 end
 
-def refresh_widget(key, v)
-  if v.is_a? Hash
-    $stderr.puts "--- Refreshing all widgets in #{key}"
-    v.each do |k, val|
+def refresh_widget(key, settings)
+  if settings.is_a? Hash
+    warn "--- Refreshing all widgets in #{key}"
+    settings.each do |k, val|
       refresh_widget("#{key}:#{k}", val)
     end
-  elsif v.is_a? Array
-    v.each do |uuid|
-      $stderr.puts "Refreshing #{key}: #{uuid}"
+  elsif settings.is_a? Array
+    settings.each do |uuid|
+      warn "Refreshing #{key}: #{uuid}"
       btt_action(%(refresh_widget "#{uuid}"))
     end
   else
-    $stderr.puts "Refreshing #{key}: #{v}"
-    btt_action(%(refresh_widget "#{v}"))
+    warn "Refreshing #{key}: #{settings}"
+    btt_action(%(refresh_widget "#{settings}"))
   end
 end
 
@@ -1092,7 +1123,7 @@ when /^stat(us)?/
       File.open(file, 'w') {|f| f.puts ''}
       Process.exit 0
     else
-      $stderr.puts "File #{file} does not exist"
+      warn "File #{file} does not exist"
       Process.exit 1
     end
   elsif ARGV[0] =~ /^g(et)?$/
@@ -1102,7 +1133,7 @@ when /^stat(us)?/
       print out.strip
       Process.exit 0
     else
-      $stderr.puts "File #{file} does not exist"
+      warn "File #{file} does not exist"
       Process.exit 1
     end
   elsif ARGV[0] =~ /^s(et)?$/
@@ -1142,14 +1173,14 @@ when /^stat(us)?/
     end
     Process.exit 0
   else
-    $stderr.puts "Invalid command, must be get FILE or set FILE ARGS"
+    warn "Invalid command, must be get FILE or set FILE ARGS"
     Process.exit 1
   end
 when /^add/
   ARGV.shift
   unless ARGV[0] =~ /^(touch|menu|stream|sd)/i
-    $stderr.puts "First argument must be 'touch', 'menu', or 'streamdeck'"
-    $stderr.puts "Example: #{File.basename(__FILE__)} add touch ip lan"
+    warn "First argument must be 'touch', 'menu', or 'streamdeck'"
+    warn "Example: #{File.basename(__FILE__)} add touch ip lan"
     data_for_command(nil)
     Process.exit 1
   end
@@ -1171,10 +1202,10 @@ when /^add/
       when /^bunch/i
         type =~ /^s[td]/ ? add_stream_deck_bunch_group : add_touch_bar_bunch_group
       end
-      $stderr.puts 'You may need to restart BetterTouchTool to see the button in your configuration.'
+      warn 'You may need to restart BetterTouchTool to see the button in your configuration.'
       Process.exit 0
     else
-      $stderr.puts '#{ARGV[0]} is only available for Touch Bar or Stream Deck'
+      warn '#{ARGV[0]} is only available for Touch Bar or Stream Deck'
       Process.exit 1
     end
   end
@@ -1194,7 +1225,7 @@ when /^add/
       add_menu_bar_button(data)
     end
 
-    $stderr.puts 'You may need to restart BetterTouchTool to see the button in your configuration.'
+    warn 'You may need to restart BetterTouchTool to see the button in your configuration.'
     Process.exit 0
   end
 
@@ -1209,19 +1240,31 @@ when /^add/
     add_menu_bar_button(data)
   end
   # puts "#{type == 'touchbar' ? 'Touch Bar' : 'Menu Bar'} widget added."
-  $stderr.puts 'You may need to restart BetterTouchTool to see the button in your configuration.'
+  warn 'You may need to restart BetterTouchTool to see the button in your configuration.'
   Process.exit 0
 when /^refresh/
   unless settings.key?(:refresh)
-    $stderr.puts 'No :refresh key in config'
-    $stderr.puts 'Config must contain \':refresh\' section with key/value pairs'
+    warn 'No :refresh key in config'
+    warn 'Config must contain \':refresh\' section with key/value pairs'
     Process.exit 0
   end
 
   ARGV.shift
-  $stderr.puts 'No key provided' unless ARGV.length.positive?
+  warn 'No key provided' unless ARGV.length.positive?
 
   refresh_key(settings[:refresh], ARGV)
+  Process.exit 0
+when /^trig/
+  unless settings.key?(:refresh)
+    warn 'No :refresh key in config'
+    warn 'Config must contain \':refresh\' setction with key/value pairs'
+    Process.exit 0
+  end
+
+  ARGV.shift
+  warn 'No key provided' unless ARGV.length.positive?
+
+  trigger_key(settings[:refresh], ARGV)
   Process.exit 0
 when /^zoom/
   ARGV.shift
