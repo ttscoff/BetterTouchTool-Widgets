@@ -233,6 +233,7 @@ parser = OptionParser.new do |opts|
   opts.separator '    network [interface|speed|location*]'
   opts.separator '    doing'
   opts.separator '    refresh [key:path ...]'
+  opts.separator '    trigger [key:path ...]'
   opts.separator '    add [touch|menu|streamdeck] COMMAND'
   opts.separator '    uuids [install]'
   opts.separator ''
